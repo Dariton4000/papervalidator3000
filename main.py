@@ -40,6 +40,81 @@ def tokencount_paper(paper):
     tokens = len(model.tokenize(content))
     return tokens
 
+def respond_stream(prompt, paper):
+    with open(f'papers/{paper}', 'rb') as f:
+            reader = PdfReader(f)
+            content = ""
+            for page in reader.pages:
+                content += page.extract_text() or ""
+    with lms.Client() as client:
+        model = client.llm.model()
+        print(f"This may take a while to start, depending on the model and paper size. You can see the progress in the LM-Studio console in the developer tab.")
+
+        current_buffer = "" 
+        in_think_content_mode = False   # for thinking models, do not change this
+        think_tag_open = "<think>"      # tags for thinking models, change this if your model uses different tags
+        think_tag_close = "</think>"
+        grey_code = "\033[90m"
+        reset_code = "\033[0m"
+            
+        final_response_text = ""
+
+        if os.name == 'nt':
+            os.system('')
+
+        for fragment in model.respond_stream(prompt):
+            current_buffer += fragment.content
+                
+            processed_text_for_fragment = ""
+            text_for_final_response = ""
+
+            while True:
+                if not in_think_content_mode:
+                    open_tag_index = current_buffer.find(think_tag_open)
+                    if open_tag_index != -1:
+                        text_to_add = current_buffer[:open_tag_index]
+                        processed_text_for_fragment += text_to_add
+                        text_for_final_response += text_to_add
+                            
+                        processed_text_for_fragment += grey_code
+                        current_buffer = current_buffer[open_tag_index + len(think_tag_open):]
+                        in_think_content_mode = True 
+                    else:
+                        processed_text_for_fragment += current_buffer
+                        text_for_final_response += current_buffer
+                        current_buffer = ""
+                        break
+                else: 
+                    close_tag_index = current_buffer.find(think_tag_close)
+                    if close_tag_index != -1:
+                        processed_text_for_fragment += current_buffer[:close_tag_index]
+                        processed_text_for_fragment += reset_code
+                        current_buffer = current_buffer[close_tag_index + len(think_tag_close):]
+                        in_think_content_mode = False
+                    else:
+                        processed_text_for_fragment += current_buffer
+                        current_buffer = ""
+                        break
+                
+            if processed_text_for_fragment:
+                print(processed_text_for_fragment, end="", flush=True)
+            if text_for_final_response:
+                final_response_text += text_for_final_response
+
+        if current_buffer:
+            if not in_think_content_mode:
+                final_response_text += current_buffer
+            print(current_buffer, end="", flush=True)
+
+        if in_think_content_mode:
+                print(reset_code, end="", flush=True)
+
+        print() 
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print(final_response_text.strip())
+        return final_response_text.strip()
+
+
 def summerize_paper(paper):
     # Summarizes the paper using the main model
     title = 'Do you want a short summary of the paper?'
@@ -54,7 +129,7 @@ def summerize_paper(paper):
         with lms.Client() as client:
             model = client.llm.model()
             print(f"Summarizing... \nThis may take a while to start, depending on the model and paper size. You can see the progress in the LM-Studio console in the developer tab.")
-            prompt = f"Summarize this paper in two sentences:\\n{content}"
+            prompt = f"Summarize this paper:\\n{content}"
 
             current_buffer = "" 
             in_think_content_mode = False   # for thinking models, do not change this
@@ -135,8 +210,9 @@ def main():
     if token_count > model_context_length:
         print(f"Warning: The paper has {token_count} tokens, which exceeds the model's context length of {model_context_length} tokens. Extend the context length in the model settings in LM-Studio or load a different model.")
     else:
-        print(f"Token count for {paper}: {token_count}")
-    summerize_paper(paper)
+        print(f"Token count for '{paper}': {token_count}")
+    user_input = input("Ask a question about the paper: ")
+    respond_stream(user_input, paper)
 
 
 
