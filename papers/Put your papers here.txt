@@ -1,0 +1,3 @@
+This directory is for storing PDF papers that you want to validate.
+
+Simply drag and drop your PDF files into this folder, and the application will process them.
